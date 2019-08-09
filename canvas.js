@@ -1,20 +1,23 @@
 class Layer {
     static layers = 0;
 
-    constructor(option) {
-        this._width = option.witdh || 1000;
-        this._height = option.height || 1000;
-        this._name = 'layer' + this.layers++;
-        this._nickname = option.nickname || this._name;
-
+    constructor(options) {
+        this._visible = true;
+        this._width = options.witdh || 1000;
+        this._height = options.height || 1000;
+        this._name = 'layer' + Layer.layers++;
+        this._nickname = options.nickname || this._name;
         this._cvs = document.createElement('canvas');
         this._cvs.style = "width: 100%;" +
             "height: auto; " +
             "border: none; " +
             "display : none;";
 
+        this._cvs.height = this._height;
+        this._cvs.width = this._width;
         this._cvs.id = this._name;
         this._ctx = this._cvs.getContext('2d');
+        this._ctx.imageSmoothingEnabled = options.smoothing;
     }
 
     get nickname() {
@@ -36,11 +39,28 @@ class Layer {
     get height() {
         return this._height;
     }
+
+    get isVisible() {
+        return this._visible;
+    }
+
+    show() {
+        this._visible = true;
+    }
+
+    hide() {
+        this._visible = false;
+    }
+
+    toggle() {
+        this._visible = !this._visible;
+    }
 }
 
 
 class Canvas {
     constructor(options) {
+        this._smoothing = options.smoothing || true;
         this._trackMouseDrag = options.trackMouseDrag || false;
         this._trackWheel = options.trackWheel || false;
         this._layerCount = options.layerCount || options.layers_nicknames.length || 1;
@@ -52,7 +72,7 @@ class Canvas {
         this._cvs = document.createElement('canvas');
         this._cvs.id = 'render';
         this._ctx = this._cvs.getContext('2d');
-
+        this._ctx.imageSmoothingEnabled = this._smoothing;
         this._cvs.height = this._height;
         this._cvs.width = this._width;
 
@@ -60,17 +80,23 @@ class Canvas {
 
         this._lastX = this._cvs.width / 2;
         this._lastY = this._cvs.height / 2;
-
+        this._zoom = 0;
+        this._offset = { x: 0, y: 0 };
         this._dContext = this._ctx;
+
 
         if (this._layerCount > 1) {
             for (let k = 0; k < this._layerCount; k++) {
-                this._layers.push(new Layer({ width: this._width, height: this._height, nickname: options.layers_nicknames[k] }));
+                this._layers.push(new Layer({ width: this._width, height: this._height, nickname: options.layers_nicknames[k], smoothing: this._smoothing }));
                 this._injectionDiv.appendChild(this._layers[k].cvs);
             }
         }
 
         trackTransforms(this._ctx);
+        //this._ctx.translate(-500, -500);
+        this._ctx.scale(2, 2);
+        this._ctx.translate(-250, -250); //(1000/2) / scale
+        this._ctx.save();
         this.render();
 
         if (this._trackMouseDrag) {
@@ -100,6 +126,7 @@ class Canvas {
                 if (parent.dragStart) {
                     var pt = parent._ctx.transformedPoint(parent.lastX, parent.lastY);
                     parent._ctx.translate(pt.x - parent.dragStart.x, pt.y - parent.dragStart.y);
+                    parent._offset.x
                     parent.render();
                 }
             }, false);
@@ -130,7 +157,6 @@ class Canvas {
     }
 
     render() {
-
         var p1 = this._ctx.transformedPoint(0, 0);
         var p2 = this._ctx.transformedPoint(this._cvs.width, this._cvs.height);
         this._ctx.clearRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
@@ -142,17 +168,28 @@ class Canvas {
 
         // Clear the entire Canvas
         this._layers.forEach(l => {
-            this._ctx.drawImage(l.cvs, 0, 0);
+            if (l.isVisible)
+                this._ctx.drawImage(l.cvs, 0, 0);
         });
     }
 
     zoom(clicks, obj) {
-        var scaleFactor = 1.1;
+        var scaleFactor = 1.02;
         var pt = obj._ctx.transformedPoint(obj.lastX, obj.lastY);
         obj._ctx.translate(pt.x, pt.y);
         var factor = Math.pow(scaleFactor, clicks);
         obj._ctx.scale(factor, factor);
         obj._ctx.translate(-pt.x, -pt.y);
+        obj.render();
+    }
+
+    reset(obj) {
+        while (obj._ctx.savedTransforms.length >= 1) {
+            obj._ctx.restore();
+        }
+        obj._ctx.save();
+        obj._ctx.translate(-obj._offset.x, -obj._offset.y);
+        obj._offset = { x: 0, y: 0 };
         obj.render();
     }
 
@@ -197,8 +234,9 @@ class Canvas {
             this._dContext = this._ctx;
         } else {
             if (typeof selector == "number") {
-                if (selector < this._layers.length && selector >= 0)
+                if (selector < this._layers.length && selector >= 0) {
                     this._dContext = this._layers[selector]._ctx;
+                }
             } else
                 this._layers.forEach(l => {
                     if (l.nickname == selector)
@@ -207,6 +245,26 @@ class Canvas {
         }
     }
 
+    getLayer(selector) {
+        if (this._layers.length == 0) {
+            return this;
+        } else {
+            if (typeof selector == "number") {
+                if (selector < this._layers.length && selector >= 0) {
+                    return this._layers[selector];
+                }
+            } else if (typeof selector == "string") {
+                var output;
+                this._layers.forEach(l => {
+                    if (l.nickname == selector) output = l;
+                });
+                if (output) return output;
+                else return layer[0];
+            } else {
+                return this._layers[0];
+            }
+        }
+    }
 }; //Class end
 
 
@@ -214,37 +272,37 @@ class Canvas {
 // Adds ctx.transformedPoint(x,y) - returns an SVGPoint
 function trackTransforms(ctx) {
     var svg = document.createElementNS("http://www.w3.org/2000/svg", 'svg');
-    var xform = svg.createSVGMatrix();
-    ctx.getTransform = function() { return xform; };
+    ctx.xform = svg.createSVGMatrix();
+    ctx.getTransform = function() { return ctx.xform; };
 
-    var savedTransforms = [];
+    ctx.savedTransforms = [];
     var save = ctx.save;
     ctx.save = function() {
-        savedTransforms.push(xform.translate(0, 0));
+        ctx.savedTransforms.push(ctx.xform.translate(0, 0));
         return save.call(ctx);
     };
 
     var restore = ctx.restore;
     ctx.restore = function() {
-        xform = savedTransforms.pop();
+        ctx.xform = ctx.savedTransforms.pop();
         return restore.call(ctx);
     };
 
     var scale = ctx.scale;
     ctx.scale = function(sx, sy) {
-        xform = xform.scaleNonUniform(sx, sy);
+        ctx.xform = ctx.xform.scaleNonUniform(sx, sy);
         return scale.call(ctx, sx, sy);
     };
 
     var rotate = ctx.rotate;
     ctx.rotate = function(radians) {
-        xform = xform.rotate(radians * 180 / Math.PI);
+        ctx.xform = ctx.xform.rotate(radians * 180 / Math.PI);
         return rotate.call(ctx, radians);
     };
 
     var translate = ctx.translate;
     ctx.translate = function(dx, dy) {
-        xform = xform.translate(dx, dy);
+        ctx.xform = ctx.xform.translate(dx, dy);
         return translate.call(ctx, dx, dy);
     };
 
@@ -257,18 +315,18 @@ function trackTransforms(ctx) {
         m2.d = d;
         m2.e = e;
         m2.f = f;
-        xform = xform.multiply(m2);
+        ctx.xform = ctx.xform.multiply(m2);
         return transform.call(ctx, a, b, c, d, e, f);
     };
 
     var setTransform = ctx.setTransform;
     ctx.setTransform = function(a, b, c, d, e, f) {
-        xform.a = a;
-        xform.b = b;
-        xform.c = c;
-        xform.d = d;
-        xform.e = e;
-        xform.f = f;
+        ctx.xform.a = a;
+        ctx.xform.b = b;
+        ctx.xform.c = c;
+        ctx.xform.d = d;
+        ctx.xform.e = e;
+        ctx.xform.f = f;
         return setTransform.call(ctx, a, b, c, d, e, f);
     };
 
@@ -276,6 +334,6 @@ function trackTransforms(ctx) {
     ctx.transformedPoint = function(x, y) {
         pt.x = x;
         pt.y = y;
-        return pt.matrixTransform(xform.inverse());
+        return pt.matrixTransform(ctx.xform.inverse());
     }
 }
