@@ -1,11 +1,11 @@
-class Layer {
-    static layers = 0;
+var layers = 0;
 
+class Layer {
     constructor(options) {
         this._visible = true;
         this._width = options.witdh || 1000;
         this._height = options.height || 1000;
-        this._name = 'layer' + Layer.layers++;
+        this._name = 'layer' + layers++;
         this._nickname = options.nickname || this._name;
         this._cvs = document.createElement('canvas');
         this._cvs.style = "width: 100%;" +
@@ -18,6 +18,10 @@ class Layer {
         this._cvs.id = this._name;
         this._ctx = this._cvs.getContext('2d');
         this._ctx.imageSmoothingEnabled = options.smoothing;
+    }
+
+    clear() {
+        this._ctx.clearRect(0, 0, this.width, this.height);
     }
 
     get nickname() {
@@ -101,7 +105,6 @@ class Canvas {
 
         if (this._trackMouseDrag) {
             var parent = this;
-            console.log(parent);
             this._cvs.addEventListener('mousedown', function(evt) {
                 var wFactor = parent._width / document.getElementById('render').offsetWidth;
                 var hFactor = parent._height / document.getElementById('render').offsetHeight;
@@ -174,6 +177,7 @@ class Canvas {
     }
 
     zoom(clicks, obj) {
+        obj = obj || this;
         var scaleFactor = 1.02;
         var pt = obj._ctx.transformedPoint(obj.lastX, obj.lastY);
         obj._ctx.translate(pt.x, pt.y);
@@ -184,6 +188,26 @@ class Canvas {
     }
 
     reset(obj) {
+        obj = obj || this;
+        obj._ctx.clearRect(0, 0, obj.width, obj.height);
+        obj._layers.forEach(l => {
+            l.ctx.clearRect(0, 0, obj.width, obj.height);
+        });
+        obj.resetTransform(obj);
+        obj.render();
+    }
+
+    clear(obj) {
+        obj = obj || this;
+        obj._layers.forEach(l => {
+            l.ctx.clearRect(0, 0, obj.width, obj.height);
+        });
+        obj._ctx.clearRect(0, 0, obj.width, obj.height);
+        obj.render();
+    }
+
+    resetTransform(obj) {
+        obj = obj || this;
         while (obj._ctx.savedTransforms.length >= 1) {
             obj._ctx.restore();
         }
@@ -194,6 +218,7 @@ class Canvas {
     }
 
     handleScroll(evt, obj) {
+        obj = obj || this;
         var delta = evt.wheelDelta ? evt.wheelDelta / 40 : evt.detail ? -evt.detail : 0;
         if (delta) obj.zoom(delta, obj);
         return evt.preventDefault() && false;
@@ -262,6 +287,27 @@ class Canvas {
                 else return layer[0];
             } else {
                 return this._layers[0];
+            }
+        }
+    }
+
+    getContext(selector) {
+        if (this._layers.length == 0) {
+            return this._ctx;
+        } else {
+            if (typeof selector == "number") {
+                if (selector < this._layers.length && selector >= 0) {
+                    return this._layers[selector]._ctx;
+                }
+            } else if (typeof selector == "string") {
+                var output;
+                this._layers.forEach(l => {
+                    if (l.nickname == selector) output = l;
+                });
+                if (output) return output._ctx;
+                else return layer[0]._ctx;
+            } else {
+                return this._layers[0]._ctx;
             }
         }
     }
