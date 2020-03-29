@@ -3,7 +3,7 @@ var layers = 0;
 class Layer {
     constructor(options) {
         this._visible = true;
-        this._width = options.witdh || 1000;
+        this._width =  options.width || 1000;
         this._height = options.height || 1000;
         this._name = 'layer' + layers++;
         this._nickname = options.nickname || this._name;
@@ -99,7 +99,7 @@ class Canvas {
         trackTransforms(this._ctx);
         //this._ctx.translate(-500, -500);
         this._ctx.scale(2, 2);
-        this._ctx.translate(-250, -250); //(1000/2) / scale
+        this._ctx.translate(-this.width/4, -this.height/4); //(1000/2) / scale
         this._ctx.save();
         this.render();
 
