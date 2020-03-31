@@ -18,6 +18,8 @@ class Layer {
         this._cvs.id = this._name;
         this._ctx = this._cvs.getContext('2d');
         this._ctx.imageSmoothingEnabled = options.smoothing;
+        this._backGround = new Image();
+        this._isImageLoaded = false;
     }
 
     clear() {
@@ -58,6 +60,24 @@ class Layer {
 
     toggle() {
         this._visible = !this._visible;
+    }
+
+    setBackGround(path){
+        this._backGround.src = path;
+        var tempCtx = this._ctx;
+        var tempWidth = this._width;
+        var tempHeight = this._height;
+        // Make sure the image is loaded first otherwise nothing will draw.
+        var tempLoaded = this._isImageLoaded;
+        this._backGround.onload = function() {
+            tempLoaded = true;
+            tempCtx.drawImage(this, 0, 0, tempWidth, tempHeight);
+        }
+    }
+    
+    drawBackGround(){
+        if(this._isImageLoaded)
+            this._ctx.drawImage(this._background, 0, 0, this._width, this._height);
     }
 }
 
@@ -171,8 +191,10 @@ class Canvas {
 
         // Clear the entire Canvas
         this._layers.forEach(l => {
-            if (l.isVisible)
+            if (l.isVisible){
+                l.drawBackGround();
                 this._ctx.drawImage(l.cvs, 0, 0);
+            }
         });
     }
 
@@ -224,21 +246,20 @@ class Canvas {
         return evt.preventDefault() && false;
     };
 
-    setBackGround(path) {
-        var canvasStyle = Canvas.cvs.style;
+    setBackGround(path, layer) {
+        var canvasStyle = this._cvs.style;
         canvasStyle.background = "#ffffff";
 
         this._ctx.fillStyle = '#ffffff';
         this._ctx.fill();
-        TurCanvastle.ctx.clearRect(0, 0, Canvas.width, Canvas.height);
-        Canvas.sprites = [];
-
-        var background = new Image();
-        background.src = path;
-
-        // Make sure the image is loaded first otherwise nothing will draw.
-        background.onload = function() {
-            this._ctx.drawImage(background, 0, 0);
+        this._ctx.clearRect(0, 0, this.width, this.height);
+        var tempLayer = undefined;
+        this._layers.forEach(l => {
+            if (l.nickname == layer)
+                tempLayer = l;
+        });
+        if(tempLayer != undefined){
+            tempLayer.setBackGround(path)
         }
     };
 
